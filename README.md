@@ -51,7 +51,9 @@ src-tauri/
 
 ## Screenshots
 
-Screenshots will be added soon.
+![Screenshot 1](screenshots/1.png)
+![Screenshot 2](screenshots/2.png)
+![Screenshot 3](screenshots/3.png)
 
 ## Key Features
 

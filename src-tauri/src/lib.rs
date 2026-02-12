@@ -304,8 +304,13 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
 #[cfg(target_os = "windows")]
 fn wifi_connected_windows() -> Result<bool> {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
     let output = Command::new("netsh")
         .args(["wlan", "show", "interfaces"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .context("failed to run netsh")?;
 
