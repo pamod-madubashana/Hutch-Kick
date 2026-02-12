@@ -1,4 +1,4 @@
-name: Build LabScan Windows App
+name: Build Tauri Windows App
 
 on:
   push:
@@ -27,46 +27,23 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-          cache: false
-      
-      - name: Build Go Agent
-        working-directory: agent
-        run: go build -o labscan-agent.exe .
-
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './admin/src-tauri -> target'
+          workspaces: './src-tauri -> target'
 
-      - name: Install frontend dependencies
-        working-directory: admin
+      - name: Install dependencies
         run: npm install
 
       - name: Install Tauri CLI
-        working-directory: admin
         run: npm install -g @tauri-apps/cli
 
       - name: Build Tauri app
-        working-directory: admin
         run: npm run tauri build
-        env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
       - name: Upload Windows executable
         uses: actions/upload-artifact@v4
         with:
-          name: LabScan-Admin
-          path: admin/src-tauri/target/release/*.exe
+          name: windows-executable
+          path: src-tauri/target/release/*.exe
           if-no-files-found: warn
-
-      - name: Upload Agent Executable
-        uses: actions/upload-artifact@v4
-        with:
-          name: LabScan-Agent
-          path: agent/labscan-agent.exe
-          if-no-files-found: error
