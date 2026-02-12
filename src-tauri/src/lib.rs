@@ -184,7 +184,7 @@ fn notify(app: &AppHandle, body: &str) {
     let _ = app
         .notification()
         .builder()
-        .title("HutchBoost")
+        .title("Hutch-Pulse")
         .body(body)
         .show();
 }
