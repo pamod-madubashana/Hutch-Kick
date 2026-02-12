@@ -32,7 +32,7 @@ export function LogPanel({ logs }: LogPanelProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto rounded-lg bg-secondary/20 border border-border/30 p-2 space-y-0.5 min-h-[60px] max-h-[100px]">
+      <div className="flex-1 overflow-hidden rounded-lg bg-secondary/20 border border-border/30 p-2 space-y-0.5 min-h-[60px]">
         {logs.length === 0 ? (
           <p className="text-[10px] text-muted-foreground/50 text-center py-2">No events</p>
         ) : (

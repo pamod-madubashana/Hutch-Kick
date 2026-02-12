@@ -10,8 +10,8 @@ const Index = () => {
   const service = useServiceState();
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background/50 p-4">
-      <div className="w-[360px] h-[420px] flex flex-col rounded-2xl bg-card/90 backdrop-blur-xl border border-border/40 shadow-xl overflow-hidden">
+    <div className="h-screen w-screen overflow-hidden bg-background/50">
+      <div className="w-full h-full flex flex-col bg-card/90 backdrop-blur-xl border border-border/40 shadow-xl overflow-hidden">
         <PopoverHeader status={service.status} />
 
         <div className="h-px bg-border/30 mx-3" />

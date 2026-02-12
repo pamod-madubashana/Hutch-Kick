@@ -10,7 +10,7 @@ use std::{
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, State, WindowEvent,
+    AppHandle, Manager, PhysicalPosition, Position, State, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_notification::NotificationExt;
 
@@ -19,6 +19,7 @@ const DEFAULT_INTERVAL_SECONDS: u64 = 120;
 const CONNECT_TIMEOUT_SECONDS: u64 = 3;
 const REQUEST_TIMEOUT_SECONDS: u64 = 5;
 const MAX_LOGS: usize = 30;
+const WINDOW_MARGIN_PX: i32 = 16;
 const CONNECTIVITY_URL: &str = "https://www.gstatic.com/generate_204";
 const KICK_URL: &str = "https://selfcare.hutch.lk/selfcare/login.html";
 
@@ -207,6 +208,7 @@ fn toggle_main_window(app: &AppHandle) -> Result<()> {
         if window.is_visible()? {
             window.hide()?;
         } else {
+            let _ = position_window_bottom_right(&window);
             window.show()?;
             window.set_focus()?;
         }
@@ -214,9 +216,26 @@ fn toggle_main_window(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
+fn position_window_bottom_right(window: &WebviewWindow) -> Result<()> {
+    let monitor = window
+        .current_monitor()?
+        .or(window.primary_monitor()?)
+        .ok_or_else(|| anyhow!("no monitor available"))?;
+    let monitor_pos = monitor.position();
+    let monitor_size = monitor.size();
+    let window_size = window.outer_size()?;
+
+    let x = monitor_pos.x + monitor_size.width as i32 - window_size.width as i32 - WINDOW_MARGIN_PX;
+    let y = monitor_pos.y + monitor_size.height as i32 - window_size.height as i32 - WINDOW_MARGIN_PX;
+
+    window.set_position(Position::Physical(PhysicalPosition::new(x, y)))?;
+    Ok(())
+}
+
 fn setup_main_window(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
         window.hide()?;
+        let _ = position_window_bottom_right(&window);
         let window_clone = window.clone();
         window.on_window_event(move |event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
