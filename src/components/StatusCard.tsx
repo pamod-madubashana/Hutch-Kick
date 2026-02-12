@@ -17,15 +17,15 @@ function timeAgo(date: Date | null): string {
 }
 
 export function StatusCard({ wifiStatus, internetStatus, lastKick }: StatusCardProps) {
-  const wifiConnected = wifiStatus === "CONNECTED";
+  const networkConnected = wifiStatus === "CONNECTED";
   const internetOnline = internetStatus === "ONLINE";
 
   const rows = [
     {
-      icon: wifiConnected ? Wifi : WifiOff,
-      label: "Wi-Fi",
-      value: wifiStatus === "UNKNOWN" ? "Unknown" : wifiConnected ? "Connected" : "Disconnected",
-      ok: wifiConnected || wifiStatus === "UNKNOWN",
+      icon: networkConnected ? Wifi : WifiOff,
+      label: "Network",
+      value: wifiStatus === "UNKNOWN" ? "Unknown" : networkConnected ? "Connected" : "Disconnected",
+      ok: networkConnected || wifiStatus === "UNKNOWN",
     },
     {
       icon: Globe,
@@ -55,7 +55,7 @@ export function StatusCard({ wifiStatus, internetStatus, lastKick }: StatusCardP
         </div>
       ))}
       <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/50">
-        Service stops automatically if Wi-Fi or internet drops.
+        Service stops automatically if network or internet drops.
       </p>
     </div>
   );

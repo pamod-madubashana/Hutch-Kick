@@ -19,7 +19,8 @@ const DEFAULT_INTERVAL_SECONDS: u64 = 20;
 const CONNECT_TIMEOUT_SECONDS: u64 = 3;
 const REQUEST_TIMEOUT_SECONDS: u64 = 5;
 const MAX_LOGS: usize = 30;
-const WINDOW_MARGIN_PX: i32 = 16;
+const WINDOW_MARGIN_X_PX: i32 = 16;
+const WINDOW_MARGIN_Y_PX: i32 = 36;
 const CONNECTIVITY_URL: &str = "https://www.gstatic.com/generate_204";
 const KICK_URL: &str = "https://selfcare.hutch.lk/selfcare/login.html";
 
@@ -225,8 +226,10 @@ fn position_window_bottom_right(window: &WebviewWindow) -> Result<()> {
     let monitor_size = monitor.size();
     let window_size = window.outer_size()?;
 
-    let x = monitor_pos.x + monitor_size.width as i32 - window_size.width as i32 - WINDOW_MARGIN_PX;
-    let y = monitor_pos.y + monitor_size.height as i32 - window_size.height as i32 - WINDOW_MARGIN_PX;
+    let x =
+        monitor_pos.x + monitor_size.width as i32 - window_size.width as i32 - WINDOW_MARGIN_X_PX;
+    let y =
+        monitor_pos.y + monitor_size.height as i32 - window_size.height as i32 - WINDOW_MARGIN_Y_PX;
 
     window.set_position(Position::Physical(PhysicalPosition::new(x, y)))?;
     Ok(())
@@ -303,13 +306,13 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 }
 
 #[cfg(target_os = "windows")]
-fn wifi_connected_windows() -> Result<bool> {
+fn network_connected_windows() -> Result<bool> {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
     let output = Command::new("netsh")
-        .args(["wlan", "show", "interfaces"])
+        .args(["interface", "show", "interface"])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
         .context("failed to run netsh")?;
@@ -320,22 +323,29 @@ fn wifi_connected_windows() -> Result<bool> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     for raw_line in stdout.lines() {
-        let line = raw_line.trim().to_ascii_lowercase();
-        if line.starts_with("state") {
-            let mut parts = line.splitn(2, ':');
-            let _ = parts.next();
-            if let Some(value) = parts.next() {
-                return Ok(value.trim().contains("connected"));
-            }
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('-') {
+            continue;
+        }
+
+        let columns: Vec<&str> = line.split_whitespace().collect();
+        if columns.len() < 4 {
+            continue;
+        }
+
+        let state = columns[1].to_ascii_lowercase();
+        let interface_type = columns[2].to_ascii_lowercase();
+        if state == "connected" && interface_type != "loopback" {
+            return Ok(true);
         }
     }
 
-    Err(anyhow!("unable to parse Wi-Fi state from netsh output"))
+    Ok(false)
 }
 
 #[cfg(not(target_os = "windows"))]
-fn wifi_connected_windows() -> Result<bool> {
-    Err(anyhow!("Wi-Fi check is only supported on Windows"))
+fn network_connected_windows() -> Result<bool> {
+    Err(anyhow!("Network check is only supported on Windows"))
 }
 
 async fn internet_online(client: &Client) -> bool {
@@ -360,14 +370,14 @@ async fn kick(client: &Client) -> bool {
     result.is_ok()
 }
 
-fn stop_for_connectivity(app: &AppHandle, shared: &SharedState, wifi_lost: bool) {
+fn stop_for_connectivity(app: &AppHandle, shared: &SharedState, network_lost: bool) {
     {
         let mut inner = shared.lock();
         if inner.current_state != ServiceMachineState::Running {
             return;
         }
 
-        if wifi_lost {
+        if network_lost {
             inner.wifi_status = WifiStatus::Disconnected;
             inner.internet_status = InternetStatus::Unknown;
         } else {
@@ -380,8 +390,8 @@ fn stop_for_connectivity(app: &AppHandle, shared: &SharedState, wifi_lost: bool)
             return;
         }
 
-        if wifi_lost {
-            inner.push_log("Wi-Fi disconnected while running.");
+        if network_lost {
+            inner.push_log("Network adapter disconnected while running.");
         } else {
             inner.push_log("Internet connectivity lost while running.");
         }
@@ -395,8 +405,8 @@ fn stop_for_connectivity(app: &AppHandle, shared: &SharedState, wifi_lost: bool)
         inner.push_log("Service moved to STOPPED.");
     }
 
-    if wifi_lost {
-        notify(app, "Wi-Fi disconnected. Service stopped.");
+    if network_lost {
+        notify(app, "Network disconnected. Service stopped.");
     } else {
         notify(app, "Internet lost. Service stopped.");
     }
@@ -417,7 +427,7 @@ async fn worker_loop(app: AppHandle, shared: SharedState) {
             break;
         }
 
-        match wifi_connected_windows() {
+        match network_connected_windows() {
             Ok(true) => {
                 let mut inner = shared.lock();
                 inner.wifi_status = WifiStatus::Connected;
@@ -476,31 +486,32 @@ async fn start_service_internal(app: AppHandle, shared: SharedState) -> Result<S
         inner.push_log("Start requested.");
     }
 
-    let wifi_connected = match wifi_connected_windows() {
+    let network_connected = match network_connected_windows() {
         Ok(connected) => connected,
         Err(err) => {
             {
                 let mut inner = shared.lock();
                 inner.wifi_status = WifiStatus::Unknown;
-                inner.error_message = Some("Wi-Fi state unknown. Start blocked.".to_string());
-                inner.push_log(format!("Wi-Fi check failed: {err}"));
+                inner.error_message = Some("Network state unknown. Start blocked.".to_string());
+                inner.push_log(format!("Network check failed: {err}"));
                 let _ = inner.transition(ServiceMachineState::Stopped);
             }
-            notify(&app, "Wi-Fi is off. Turn it on to start.");
+            notify(&app, "Network state unknown. Check Wi-Fi or Ethernet.");
             return Ok(shared.snapshot());
         }
     };
 
-    if !wifi_connected {
+    if !network_connected {
         {
             let mut inner = shared.lock();
             inner.wifi_status = WifiStatus::Disconnected;
             inner.internet_status = InternetStatus::Unknown;
-            inner.error_message = Some("Wi-Fi is off. Turn it on to start.".to_string());
-            inner.push_log("Start blocked because Wi-Fi is disconnected.");
+            inner.error_message =
+                Some("No active network adapter. Connect Wi-Fi or Ethernet to start.".to_string());
+            inner.push_log("Start blocked because no network adapter is connected.");
             let _ = inner.transition(ServiceMachineState::Stopped);
         }
-        notify(&app, "Wi-Fi is off. Turn it on to start.");
+        notify(&app, "Connect Wi-Fi or Ethernet to start.");
         return Ok(shared.snapshot());
     }
 
