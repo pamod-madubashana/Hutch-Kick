@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "HutchKick"
+name = "Hutch-Kick"
 version = "0.1.0"
 dependencies = [
  "anyhow",

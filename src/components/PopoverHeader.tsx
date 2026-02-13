@@ -18,7 +18,7 @@ export function PopoverHeader({ status }: PopoverHeaderProps) {
   return (
     <div className="flex items-center justify-between px-4 py-3">
       <div>
-        <h1 className="text-sm font-semibold text-foreground tracking-tight">HutchKick</h1>
+        <h1 className="text-sm font-semibold text-foreground tracking-tight">Hutch-Kick</h1>
       </div>
       <div className="flex items-center gap-2 rounded-full bg-secondary/50 px-2.5 py-1">
         <span className={`status-dot ${config.className}`} />

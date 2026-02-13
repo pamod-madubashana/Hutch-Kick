@@ -1,8 +1,8 @@
 <div align='center'>
-<h1>HutchKick</h1>
+<h1>Hutch-Kick</h1>
 
 <img src='src-tauri/icons/icon.png' width=200>
-<p>HutchKick is a lightweight Windows tray app that starts or stops a background service to "kick" your Hutch self-care page, while automatically pausing when Wi-Fi or internet drops. 📶⚡</p>
+<p>Hutch-Kick is a lightweight Windows tray app that starts or stops a background service to "kick" your Hutch self-care page, while automatically pausing when Wi-Fi or internet drops. 📶⚡</p>
 </div>
 
 ## Tech Stack
@@ -100,7 +100,7 @@ npm run tauri build
 
 ## Usage
 
-1. Launch HutchKick - it will appear in your system tray
+1. Launch Hutch-Kick - it will appear in your system tray
 2. Click the tray icon to open the control panel
 3. Click **Start** to begin the kicking service
 4. The service will automatically pause when Wi-Fi or internet drops
