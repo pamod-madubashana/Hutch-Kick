@@ -5,6 +5,23 @@
 <p>Hutch-Kick is a lightweight Windows tray app that starts or stops a background service to "kick" your Hutch self-care page, while automatically pausing when Wi-Fi or internet drops. 📶⚡</p>
 </div>
 
+<br>
+<div align="center">
+
+## Downloads
+
+| Platform | Download Link |
+|----------|--------------|
+| Windows (Setup) | [Hutch-Kick-x64-setup.exe](https://github.com/pamod-madubashana/Hutch-Kick/releases/latest/download/Hutch-Kick-tray_x64-setup.exe) |
+| Windows (MSI) | [Hutch-Kick-x64_en-US.msi](https://github.com/pamod-madubashana/Hutch-Kick/releases/latest/download/Hutch-Kick-tray_x64_en-US.msi) |
+| Windows (Portable) | [Hutch-Kick.exe](https://github.com/pamod-madubashana/Hutch-Kick/releases/latest/download/Hutch-Kick.exe) |
+| Linux (AppImage) | [Hutch-Kick-amd64.AppImage](https://github.com/pamod-madubashana/Hutch-Kick/releases/latest/download/Hutch-Kick-tray_amd64.AppImage) |
+| Linux (DEB) | [Hutch-Kick-amd64.deb](https://github.com/pamod-madubashana/Hutch-Kick/releases/latest/download/Hutch-Kick-tray_amd64.deb) |
+| Linux (RPM) | [Hutch-Kick-x86_64.rpm](https://github.com/pamod-madubashana/Hutch-Kick/releases/latest/download/Hutch-Kick-tray-x86_64.rpm) |
+| macOS (Apple Silicon) | [Hutch-Kick-aarch64.dmg](https://github.com/pamod-madubashana/Hutch-Kick/releases/latest/download/Hutch-Kick-tray_aarch64.dmg) |
+
+</div>
+
 ## Tech Stack
 
 - Frontend: React + TypeScript + Vite
