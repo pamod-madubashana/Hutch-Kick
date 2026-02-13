@@ -151,7 +151,7 @@ jobs:
           # RPM
           rpm="$(ls -1 src-tauri/target/release/bundle/rpm/*.rpm 2>/dev/null | head -n1 || true)"
           if [ -n "${rpm:-}" ]; then
-            cp "$rpm" "release/Hutch-Kick-tray-1.x86_64.rpm"
+            cp "$rpm" "release/Hutch-Kick-tray-x86_64.rpm"
           fi
 
           # Raw binary (if you want)
