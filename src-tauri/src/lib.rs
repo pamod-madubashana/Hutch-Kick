@@ -5,7 +5,7 @@ use std::{
     collections::VecDeque,
     process::Command,
     sync::{Arc, Mutex, MutexGuard},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
     menu::{Menu, MenuItem},
@@ -99,7 +99,6 @@ impl InnerState {
             worker_handle: None,
             client,
         };
-        state.push_log("Service initialized in STOPPED state.");
         state
     }
 
@@ -191,6 +190,10 @@ fn now_ms() -> u64 {
     system_time_to_ms(SystemTime::now())
 }
 
+fn format_latency(elapsed: Duration) -> String {
+    format!("{}ms", elapsed.as_millis())
+}
+
 fn system_time_to_ms(value: SystemTime) -> u64 {
     value
         .duration_since(UNIX_EPOCH)
@@ -216,7 +219,6 @@ fn set_error_and_stop(app: &AppHandle, shared: &SharedState, message: impl Into<
         inner.push_log(format!("Unexpected failure: {error_message}"));
         let _ = inner.transition(ServiceMachineState::Stopped);
         inner.worker_handle = None;
-        inner.push_log("Service moved to STOPPED after ERROR.");
     }
     notify(app, "Unexpected error. Service stopped.");
 }
@@ -422,13 +424,18 @@ async fn connectivity_monitor_loop(shared: SharedState) {
     }
 }
 
-async fn kick(client: &Client) -> bool {
+async fn kick(client: &Client) -> Result<Duration> {
+    let started_at = Instant::now();
     let result = client
         .get(KICK_URL)
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECONDS))
         .send()
         .await;
-    result.is_ok()
+
+    match result {
+        Ok(_) => Ok(started_at.elapsed()),
+        Err(err) => Err(anyhow!(err)),
+    }
 }
 
 fn stop_for_connectivity(app: &AppHandle, shared: &SharedState, network_lost: bool) {
@@ -463,7 +470,6 @@ fn stop_for_connectivity(app: &AppHandle, shared: &SharedState, network_lost: bo
             set_error_and_stop(app, shared, "Failed transition to STOPPED");
             return;
         }
-        inner.push_log("Service moved to STOPPED.");
     }
 
     if network_lost {
@@ -518,15 +524,18 @@ async fn worker_loop(app: AppHandle, shared: SharedState) {
             break;
         }
 
-        if !kick(&client).await {
-            set_error_and_stop(&app, &shared, "Kick request failed.");
-            break;
-        }
+        let latency = match kick(&client).await {
+            Ok(latency) => latency,
+            Err(_) => {
+                set_error_and_stop(&app, &shared, "Kick request failed.");
+                break;
+            }
+        };
 
         {
             let mut inner = shared.lock();
             inner.last_kick_time = Some(SystemTime::now());
-            inner.push_log("Kick sent successfully.");
+            inner.push_log(format!("Kick latency: {}", format_latency(latency)));
         }
 
         tokio::time::sleep(Duration::from_secs(interval_seconds)).await;
@@ -544,7 +553,6 @@ async fn start_service_internal(app: AppHandle, shared: SharedState) -> Result<S
             .transition(ServiceMachineState::Starting)
             .map_err(|err| err.to_string())?;
         inner.error_message = None;
-        inner.push_log("Start requested.");
     }
 
     let network_connected = match network_connected_windows() {
@@ -580,10 +588,7 @@ async fn start_service_internal(app: AppHandle, shared: SharedState) -> Result<S
         let mut inner = shared.lock();
         inner.wifi_status = WifiStatus::Connected;
         inner.error_message = None;
-        inner
-            .transition(ServiceMachineState::Running)
-            .map_err(|err| err.to_string())?;
-        inner.push_log("Service transitioned to RUNNING.");
+        inner.transition(ServiceMachineState::Running).map_err(|err| err.to_string())?;
     }
 
     let app_for_worker = app.clone();
@@ -615,7 +620,6 @@ async fn stop_service_internal(_app: AppHandle, shared: SharedState) -> Result<S
         inner
             .transition(ServiceMachineState::Stopping)
             .map_err(|err| err.to_string())?;
-        inner.push_log("Stop requested by user.");
         inner.worker_handle.take()
     };
 
@@ -631,7 +635,6 @@ async fn stop_service_internal(_app: AppHandle, shared: SharedState) -> Result<S
                 .map_err(|err| err.to_string())?;
             inner.worker_handle = None;
             inner.error_message = None;
-            inner.push_log("Service stopped by user.");
         }
     }
 
@@ -669,15 +672,18 @@ async fn kick_now(app: AppHandle, state: State<'_, SharedState>) -> Result<Servi
         inner.client.clone()
     };
 
-    if !kick(&client).await {
-        set_error_and_stop(&app, state.inner(), "Manual kick failed.");
-        return Ok(state.inner().snapshot());
-    }
+    let latency = match kick(&client).await {
+        Ok(latency) => latency,
+        Err(_) => {
+            set_error_and_stop(&app, state.inner(), "Manual kick failed.");
+            return Ok(state.inner().snapshot());
+        }
+    };
 
     {
         let mut inner = state.inner().lock();
         inner.last_kick_time = Some(SystemTime::now());
-        inner.push_log("Manual kick sent successfully.");
+        inner.push_log(format!("Manual kick latency: {}", format_latency(latency)));
     }
 
     Ok(state.inner().snapshot())
@@ -688,7 +694,6 @@ fn set_interval(interval_seconds: u64, state: State<'_, SharedState>) -> Service
     let mut inner = state.inner().lock();
     let sanitized = sanitize_interval_seconds(interval_seconds);
     inner.interval_seconds = sanitized;
-    inner.push_log(format!("Kick interval set to {sanitized}s."));
     inner.snapshot()
 }
 
