@@ -14,10 +14,12 @@ use tauri::{
 };
 use tauri_plugin_notification::NotificationExt;
 
-const MIN_INTERVAL_SECONDS: u64 = 20;
+const ALLOWED_INTERVAL_SECONDS: [u64; 6] = [MIN_INTERVAL_SECONDS, 10, 15, 20, 25, 30];
+const MIN_INTERVAL_SECONDS: u64 = 5;
 const DEFAULT_INTERVAL_SECONDS: u64 = 20;
 const CONNECT_TIMEOUT_SECONDS: u64 = 3;
 const REQUEST_TIMEOUT_SECONDS: u64 = 5;
+const CONNECTIVITY_MONITOR_INTERVAL_SECONDS: u64 = 3;
 const MAX_LOGS: usize = 30;
 const WINDOW_MARGIN_X_PX: i32 = 16;
 const WINDOW_MARGIN_Y_PX: i32 = 36;
@@ -167,6 +169,21 @@ fn is_valid_transition(from: ServiceMachineState, to: ServiceMachineState) -> bo
             | (ServiceMachineState::Stopping, ServiceMachineState::Stopped)
             | (_, ServiceMachineState::Error)
             | (ServiceMachineState::Error, ServiceMachineState::Stopped)
+    )
+}
+
+fn sanitize_interval_seconds(interval_seconds: u64) -> u64 {
+    if ALLOWED_INTERVAL_SECONDS.contains(&interval_seconds) {
+        interval_seconds
+    } else {
+        DEFAULT_INTERVAL_SECONDS
+    }
+}
+
+fn service_owns_connectivity(state: ServiceMachineState) -> bool {
+    matches!(
+        state,
+        ServiceMachineState::Starting | ServiceMachineState::Running | ServiceMachineState::Stopping
     )
 }
 
@@ -361,6 +378,50 @@ async fn internet_online(client: &Client) -> bool {
     }
 }
 
+async fn refresh_connectivity_state(shared: &SharedState) {
+    let wifi_status = match network_connected_windows() {
+        Ok(true) => WifiStatus::Connected,
+        Ok(false) => WifiStatus::Disconnected,
+        Err(_) => WifiStatus::Unknown,
+    };
+
+    let client = {
+        let mut inner = shared.lock();
+        if service_owns_connectivity(inner.current_state) {
+            return;
+        }
+        inner.wifi_status = wifi_status;
+        if wifi_status != WifiStatus::Connected {
+            inner.internet_status = InternetStatus::Unknown;
+            return;
+        }
+        inner.client.clone()
+    };
+
+    let internet_status = if internet_online(&client).await {
+        InternetStatus::Online
+    } else {
+        InternetStatus::Offline
+    };
+
+    let mut inner = shared.lock();
+    if service_owns_connectivity(inner.current_state) {
+        return;
+    }
+    if inner.wifi_status == WifiStatus::Connected {
+        inner.internet_status = internet_status;
+    }
+}
+
+async fn connectivity_monitor_loop(shared: SharedState) {
+    refresh_connectivity_state(&shared).await;
+
+    loop {
+        tokio::time::sleep(Duration::from_secs(CONNECTIVITY_MONITOR_INTERVAL_SECONDS)).await;
+        refresh_connectivity_state(&shared).await;
+    }
+}
+
 async fn kick(client: &Client) -> bool {
     let result = client
         .get(KICK_URL)
@@ -418,7 +479,7 @@ async fn worker_loop(app: AppHandle, shared: SharedState) {
             let inner = shared.lock();
             (
                 inner.client.clone(),
-                inner.interval_seconds.max(MIN_INTERVAL_SECONDS),
+                sanitize_interval_seconds(inner.interval_seconds),
                 inner.current_state,
             )
         };
@@ -518,26 +579,7 @@ async fn start_service_internal(app: AppHandle, shared: SharedState) -> Result<S
     {
         let mut inner = shared.lock();
         inner.wifi_status = WifiStatus::Connected;
-    }
-
-    let client = {
-        let inner = shared.lock();
-        inner.client.clone()
-    };
-
-    let internet_ok = internet_online(&client).await;
-    if !internet_ok {
-        let mut inner = shared.lock();
-        inner.internet_status = InternetStatus::Offline;
-        inner.error_message = Some("Internet unavailable. Start blocked.".to_string());
-        inner.push_log("Start blocked because internet is offline.");
-        let _ = inner.transition(ServiceMachineState::Stopped);
-        return Ok(inner.snapshot());
-    }
-
-    {
-        let mut inner = shared.lock();
-        inner.internet_status = InternetStatus::Online;
+        inner.error_message = None;
         inner
             .transition(ServiceMachineState::Running)
             .map_err(|err| err.to_string())?;
@@ -644,7 +686,7 @@ async fn kick_now(app: AppHandle, state: State<'_, SharedState>) -> Result<Servi
 #[tauri::command]
 fn set_interval(interval_seconds: u64, state: State<'_, SharedState>) -> ServiceSnapshot {
     let mut inner = state.inner().lock();
-    let sanitized = interval_seconds.max(MIN_INTERVAL_SECONDS);
+    let sanitized = sanitize_interval_seconds(interval_seconds);
     inner.interval_seconds = sanitized;
     inner.push_log(format!("Kick interval set to {sanitized}s."));
     inner.snapshot()
@@ -670,6 +712,10 @@ pub fn run() {
         .setup(|app| {
             setup_main_window(app.handle())?;
             setup_tray(app.handle())?;
+            let shared = app.state::<SharedState>().inner().clone();
+            tauri::async_runtime::spawn(async move {
+                connectivity_monitor_loop(shared).await;
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -45,7 +45,7 @@ const Index = () => {
           <LogPanel logs={service.logs} />
         </div>
 
-        <PopoverFooter version="v1.0.0" onQuit={service.quitApp} />
+        <PopoverFooter version="v0.1.1" onQuit={service.quitApp} />
       </div>
     </div>
   );

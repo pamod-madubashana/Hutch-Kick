@@ -8,10 +8,12 @@ interface AdvancedSettingsProps {
 }
 
 const intervalOptions: { value: KickInterval; label: string }[] = [
+  { value: "5", label: "5s" },
+  { value: "10", label: "10s" },
+  { value: "15", label: "15s" },
   { value: "20", label: "20s" },
-  { value: "60", label: "60s" },
-  { value: "120", label: "120s" },
-  { value: "300", label: "300s" },
+  { value: "25", label: "25s" },
+  { value: "30", label: "30s" },
 ];
 
 export function AdvancedSettings({ kickInterval, onKickIntervalChange }: AdvancedSettingsProps) {
@@ -38,7 +40,7 @@ export function AdvancedSettings({ kickInterval, onKickIntervalChange }: Advance
 
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Kick Interval</span>
-            <div className="flex gap-1">
+            <div className="flex max-w-[160px] flex-wrap justify-end gap-1">
               {intervalOptions.map((opt) => (
                 <button
                   key={opt.value}
@@ -56,7 +58,7 @@ export function AdvancedSettings({ kickInterval, onKickIntervalChange }: Advance
           </div>
 
           <div className="space-y-1">
-            <span className="text-muted-foreground">Connectivity Check</span>
+            <span className="text-muted-foreground">Internet Check</span>
             <p className="text-foreground/80 font-mono text-[10px]">
               HEAD https://www.gstatic.com/generate_204
             </p>
