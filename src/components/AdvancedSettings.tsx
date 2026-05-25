@@ -58,7 +58,7 @@ export function AdvancedSettings({ kickInterval, onKickIntervalChange }: Advance
           </div>
 
           <div className="space-y-1">
-            <span className="text-muted-foreground">Connectivity Check</span>
+            <span className="text-muted-foreground">Internet Check</span>
             <p className="text-foreground/80 font-mono text-[10px]">
               HEAD https://www.gstatic.com/generate_204
             </p>
