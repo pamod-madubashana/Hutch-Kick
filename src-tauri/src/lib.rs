@@ -14,7 +14,8 @@ use tauri::{
 };
 use tauri_plugin_notification::NotificationExt;
 
-const MIN_INTERVAL_SECONDS: u64 = 20;
+const ALLOWED_INTERVAL_SECONDS: [u64; 6] = [MIN_INTERVAL_SECONDS, 10, 15, 20, 25, 30];
+const MIN_INTERVAL_SECONDS: u64 = 5;
 const DEFAULT_INTERVAL_SECONDS: u64 = 20;
 const CONNECT_TIMEOUT_SECONDS: u64 = 3;
 const REQUEST_TIMEOUT_SECONDS: u64 = 5;
@@ -168,6 +169,14 @@ fn is_valid_transition(from: ServiceMachineState, to: ServiceMachineState) -> bo
             | (_, ServiceMachineState::Error)
             | (ServiceMachineState::Error, ServiceMachineState::Stopped)
     )
+}
+
+fn sanitize_interval_seconds(interval_seconds: u64) -> u64 {
+    if ALLOWED_INTERVAL_SECONDS.contains(&interval_seconds) {
+        interval_seconds
+    } else {
+        DEFAULT_INTERVAL_SECONDS
+    }
 }
 
 fn now_ms() -> u64 {
@@ -418,7 +427,7 @@ async fn worker_loop(app: AppHandle, shared: SharedState) {
             let inner = shared.lock();
             (
                 inner.client.clone(),
-                inner.interval_seconds.max(MIN_INTERVAL_SECONDS),
+                sanitize_interval_seconds(inner.interval_seconds),
                 inner.current_state,
             )
         };
@@ -644,7 +653,7 @@ async fn kick_now(app: AppHandle, state: State<'_, SharedState>) -> Result<Servi
 #[tauri::command]
 fn set_interval(interval_seconds: u64, state: State<'_, SharedState>) -> ServiceSnapshot {
     let mut inner = state.inner().lock();
-    let sanitized = interval_seconds.max(MIN_INTERVAL_SECONDS);
+    let sanitized = sanitize_interval_seconds(interval_seconds);
     inner.interval_seconds = sanitized;
     inner.push_log(format!("Kick interval set to {sanitized}s."));
     inner.snapshot()
