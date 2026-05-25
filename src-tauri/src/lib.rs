@@ -1,8 +1,10 @@
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
+    fs,
+    path::PathBuf,
     process::Command,
     sync::{Arc, Mutex, MutexGuard},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -60,6 +62,12 @@ struct LogEvent {
     message: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppSettings {
+    interval_seconds: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ServiceSnapshot {
@@ -87,7 +95,7 @@ struct InnerState {
 
 impl InnerState {
     fn new(client: Client) -> Self {
-        let mut state = Self {
+        let state = Self {
             current_state: ServiceMachineState::Stopped,
             wifi_status: WifiStatus::Unknown,
             internet_status: InternetStatus::Unknown,
@@ -192,6 +200,34 @@ fn now_ms() -> u64 {
 
 fn format_latency(elapsed: Duration) -> String {
     format!("{}ms", elapsed.as_millis())
+}
+
+fn settings_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(app.path().app_config_dir()?.join("settings.json"))
+}
+
+fn load_settings(app: &AppHandle) -> Result<Option<AppSettings>> {
+    let path = settings_path(app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let settings = serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+    Ok(Some(settings))
+}
+
+fn save_settings(app: &AppHandle, settings: &AppSettings) -> Result<()> {
+    let path = settings_path(app)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+
+    let raw = serde_json::to_string_pretty(settings).context("failed to serialize settings")?;
+    fs::write(&path, raw).with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
 }
 
 fn system_time_to_ms(value: SystemTime) -> u64 {
@@ -690,10 +726,20 @@ async fn kick_now(app: AppHandle, state: State<'_, SharedState>) -> Result<Servi
 }
 
 #[tauri::command]
-fn set_interval(interval_seconds: u64, state: State<'_, SharedState>) -> ServiceSnapshot {
+fn set_interval(app: AppHandle, interval_seconds: u64, state: State<'_, SharedState>) -> ServiceSnapshot {
     let mut inner = state.inner().lock();
     let sanitized = sanitize_interval_seconds(interval_seconds);
     inner.interval_seconds = sanitized;
+
+    if let Err(err) = save_settings(
+        &app,
+        &AppSettings {
+            interval_seconds: sanitized,
+        },
+    ) {
+        inner.push_log(format!("Failed to save interval: {err}"));
+    }
+
     inner.snapshot()
 }
 
@@ -717,6 +763,16 @@ pub fn run() {
         .setup(|app| {
             setup_main_window(app.handle())?;
             setup_tray(app.handle())?;
+            let shared = app.state::<SharedState>().inner().clone();
+            match load_settings(app.handle()) {
+                Ok(Some(settings)) => {
+                    shared.lock().interval_seconds = sanitize_interval_seconds(settings.interval_seconds);
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    shared.lock().push_log(format!("Failed to load settings: {err}"));
+                }
+            }
             let shared = app.state::<SharedState>().inner().clone();
             tauri::async_runtime::spawn(async move {
                 connectivity_monitor_loop(shared).await;
