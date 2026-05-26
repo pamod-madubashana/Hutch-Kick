@@ -31,6 +31,10 @@
     --status-starting: 210 90% 56%;
     --status-stopping: 34 90% 56%;
     --status-error: 0 72% 50%;
+    --status-good: 142 60% 45%;
+    --status-warn: 48 96% 45%;
+    --status-alert: 28 92% 50%;
+    --status-bad: 0 72% 50%;
 
     --surface-glass: 220 14% 92% / 0.8;
 
@@ -76,6 +80,10 @@
     --status-starting: 210 90% 60%;
     --status-stopping: 34 90% 60%;
     --status-error: 0 72% 55%;
+    --status-good: 142 60% 50%;
+    --status-warn: 48 96% 58%;
+    --status-alert: 28 92% 60%;
+    --status-bad: 0 72% 55%;
 
     --surface-glass: 220 18% 14% / 0.7;
 
@@ -141,6 +149,40 @@
   .status-stopping {
     background-color: hsl(var(--status-stopping));
     animation: pulse-glow 1.2s ease-in-out infinite;
+  }
+  .text-status-good {
+    color: hsl(var(--status-good));
+  }
+  .text-status-warn {
+    color: hsl(var(--status-warn));
+  }
+  .text-status-alert {
+    color: hsl(var(--status-alert));
+  }
+  .text-status-bad {
+    color: hsl(var(--status-bad));
+  }
+  .themed-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.42) hsl(var(--background) / 0.18);
+    scrollbar-gutter: stable;
+  }
+  .themed-scrollbar::-webkit-scrollbar {
+    width: 10px;
+  }
+  .themed-scrollbar::-webkit-scrollbar-track {
+    background: hsl(var(--background) / 0.18);
+    border-left: 1px solid hsl(var(--border) / 0.3);
+  }
+  .themed-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.42);
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-clip: padding-box;
+  }
+  .themed-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--foreground) / 0.28);
+    background-clip: padding-box;
   }
 }
 

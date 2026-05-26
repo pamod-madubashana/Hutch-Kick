@@ -2,7 +2,7 @@ import { useServiceState } from "@/hooks/useServiceState";
 import { PopoverHeader } from "@/components/PopoverHeader";
 import { StatusCard } from "@/components/StatusCard";
 import { PrimaryControls } from "@/components/PrimaryControls";
-import { AdvancedSettings } from "@/components/AdvancedSettings";
+import { DelaySelector } from "@/components/DelaySelector";
 import { LogPanel } from "@/components/LogPanel";
 import { PopoverFooter } from "@/components/PopoverFooter";
 
@@ -10,8 +10,12 @@ const Index = () => {
   const service = useServiceState();
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-background/50">
-      <div className="w-full h-full flex flex-col bg-card/90 backdrop-blur-xl border border-border/40 shadow-xl overflow-hidden">
+    <div className="relative h-screen w-screen overflow-hidden bg-background">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(70,196,123,0.18),transparent_46%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_28%)]" />
+      <div className="pointer-events-none absolute -left-14 top-24 h-32 w-32 rounded-full bg-primary/10 blur-3xl" />
+      <div className="pointer-events-none absolute right-0 top-0 h-24 w-24 rounded-full bg-white/5 blur-2xl" />
+
+      <div className="relative flex h-full w-full flex-col overflow-hidden border border-border/40 bg-card/88 shadow-[0_24px_80px_-42px_rgba(0,0,0,0.95)] backdrop-blur-2xl">
         <PopoverHeader status={service.status} />
 
         <div className="h-px bg-border/30 mx-3" />
@@ -31,7 +35,7 @@ const Index = () => {
             errorMessage={service.errorMessage}
           />
 
-          <AdvancedSettings
+          <DelaySelector
             kickInterval={service.kickInterval}
             onKickIntervalChange={service.setKickInterval}
           />
