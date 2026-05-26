@@ -15,6 +15,7 @@
         "title": "Hutch-Kick",
         "width": 360,
         "height": 520,
+        "decorations": false,
         "resizable": false,
         "maximizable": false,
         "minimizable": false,
