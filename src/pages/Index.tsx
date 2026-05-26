@@ -2,7 +2,6 @@ import { useServiceState } from "@/hooks/useServiceState";
 import { PopoverHeader } from "@/components/PopoverHeader";
 import { StatusCard } from "@/components/StatusCard";
 import { PrimaryControls } from "@/components/PrimaryControls";
-import { DelaySelector } from "@/components/DelaySelector";
 import { LogPanel } from "@/components/LogPanel";
 import { PopoverFooter } from "@/components/PopoverFooter";
 
@@ -31,13 +30,9 @@ const Index = () => {
             status={service.status}
             onStart={service.startService}
             onStop={service.stopService}
-            onKickNow={service.kickNow}
-            errorMessage={service.errorMessage}
-          />
-
-          <DelaySelector
             kickInterval={service.kickInterval}
             onKickIntervalChange={service.setKickInterval}
+            errorMessage={service.errorMessage}
           />
 
           {!service.backendConnected && (
