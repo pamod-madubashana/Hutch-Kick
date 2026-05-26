@@ -19,11 +19,12 @@ const Index = () => {
 
         <div className="h-px bg-border/30 mx-3" />
 
-        <div className="flex-1 flex flex-col gap-3 py-3 overflow-hidden">
+        <div className="flex-1 flex flex-col gap-2.5 py-3 overflow-hidden">
           <StatusCard
             wifiStatus={service.wifiStatus}
             internetStatus={service.internetStatus}
             lastKick={service.lastKick}
+            logs={service.logs}
           />
 
           <PrimaryControls

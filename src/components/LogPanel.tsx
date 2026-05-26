@@ -75,7 +75,7 @@ export function LogPanel({ logs }: LogPanelProps) {
   };
 
   return (
-    <div className="mx-3 flex-1 flex flex-col min-h-0">
+    <div className="mx-3 flex min-h-0 flex-1 flex-col">
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
           Recent Events
@@ -91,7 +91,7 @@ export function LogPanel({ logs }: LogPanelProps) {
         </div>
       </div>
 
-      <div className="themed-scrollbar flex-1 min-h-[60px] space-y-0.5 overflow-y-auto rounded-xl border border-border/30 bg-secondary/16 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <div className="themed-scrollbar flex-1 min-h-[132px] space-y-0.5 overflow-y-auto rounded-xl border border-border/30 bg-secondary/16 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
         {logs.length === 0 ? (
           <p className="text-[10px] text-muted-foreground/50 text-center py-2">No events</p>
         ) : (
