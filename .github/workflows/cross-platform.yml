@@ -30,12 +30,35 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
         shell: bash
 
-      - name: Read version from VERSION file
+      - name: Validate and read release version
         id: get_version
         run: |
-          # Read the first line and strip all whitespace, control characters, and ensure proper encoding
-          version=$(head -n 1 "${{ github.workspace }}/VERSION" | LC_ALL=C tr -dc '[:alnum:].-_+' | xargs)
-          echo "version=$version" >> $GITHUB_OUTPUT
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import tomllib
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          version = root.joinpath("VERSION").read_text(encoding="utf-8").splitlines()[0].strip()
+          package_version = json.loads(root.joinpath("package.json").read_text(encoding="utf-8"))["version"]
+          tauri_version = json.loads(root.joinpath("src-tauri", "tauri.conf.json").read_text(encoding="utf-8"))["version"]
+          cargo_version = tomllib.loads(root.joinpath("src-tauri", "Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
+
+          versions = {
+              "VERSION": version,
+              "package.json": package_version,
+              "src-tauri/tauri.conf.json": tauri_version,
+              "src-tauri/Cargo.toml": cargo_version,
+          }
+
+          if len(set(versions.values())) != 1:
+              mismatch = "\n".join(f"- {path}: {value}" for path, value in versions.items())
+              raise SystemExit(f"Release version mismatch:\n{mismatch}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"version={version}\n")
+          PY
         shell: bash
 
       - name: Extract release notes from commit message
