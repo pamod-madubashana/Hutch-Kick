@@ -252,7 +252,7 @@ export function StatusCard({ wifiStatus, internetStatus, lastKick, logs }: Statu
       </div>
 
       <p className="mt-1 border-t border-white/6 pt-1 text-[7px] leading-[14px] tracking-[0.04em] text-muted-foreground/88">
-        Service stops automatically if network or internet drops.
+        Service keeps retrying while internet is offline and stops only if the network disconnects.
       </p>
     </div>
   );

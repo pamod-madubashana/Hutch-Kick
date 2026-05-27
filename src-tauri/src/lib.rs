@@ -158,7 +158,9 @@ impl SharedState {
     }
 
     fn lock(&self) -> MutexGuard<'_, InnerState> {
-        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn snapshot(&self) -> ServiceSnapshot {
@@ -190,7 +192,9 @@ fn sanitize_interval_seconds(interval_seconds: u64) -> u64 {
 fn service_owns_connectivity(state: ServiceMachineState) -> bool {
     matches!(
         state,
-        ServiceMachineState::Starting | ServiceMachineState::Running | ServiceMachineState::Stopping
+        ServiceMachineState::Starting
+            | ServiceMachineState::Running
+            | ServiceMachineState::Stopping
     )
 }
 
@@ -212,7 +216,8 @@ fn load_settings(app: &AppHandle) -> Result<Option<AppSettings>> {
         return Ok(None);
     }
 
-    let raw = fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let settings = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse {}", path.display()))?;
     Ok(Some(settings))
@@ -295,17 +300,15 @@ fn setup_main_window(app: &AppHandle) -> tauri::Result<()> {
         window.hide()?;
         let _ = position_window_bottom_right(&window);
         let window_clone = window.clone();
-        window.on_window_event(move |event| {
-            match event {
-                WindowEvent::CloseRequested { api, .. } => {
-                    api.prevent_close();
-                    let _ = window_clone.hide();
-                }
-                WindowEvent::Focused(false) => {
-                    let _ = window_clone.hide();
-                }
-                _ => {}
+        window.on_window_event(move |event| match event {
+            WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let _ = window_clone.hide();
             }
+            WindowEvent::Focused(false) => {
+                let _ = window_clone.hide();
+            }
+            _ => {}
         });
     }
     Ok(())
@@ -334,7 +337,11 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                         start_service_internal(app_handle.clone(), shared).await
                     };
                     if let Err(err) = result {
-                        set_error_and_stop(&app_handle, &app_handle.state::<SharedState>().inner().clone(), err);
+                        set_error_and_stop(
+                            &app_handle,
+                            &app_handle.state::<SharedState>().inner().clone(),
+                            err,
+                        );
                     }
                 });
             } else if event.id() == "quit" {
@@ -474,19 +481,15 @@ async fn kick(client: &Client) -> Result<Duration> {
     }
 }
 
-fn stop_for_connectivity(app: &AppHandle, shared: &SharedState, network_lost: bool) {
+fn stop_for_network_disconnect(app: &AppHandle, shared: &SharedState) {
     {
         let mut inner = shared.lock();
         if inner.current_state != ServiceMachineState::Running {
             return;
         }
 
-        if network_lost {
-            inner.wifi_status = WifiStatus::Disconnected;
-            inner.internet_status = InternetStatus::Unknown;
-        } else {
-            inner.internet_status = InternetStatus::Offline;
-        }
+        inner.wifi_status = WifiStatus::Disconnected;
+        inner.internet_status = InternetStatus::Unknown;
 
         if inner.transition(ServiceMachineState::Stopping).is_err() {
             drop(inner);
@@ -494,11 +497,7 @@ fn stop_for_connectivity(app: &AppHandle, shared: &SharedState, network_lost: bo
             return;
         }
 
-        if network_lost {
-            inner.push_log("Network adapter disconnected while running.");
-        } else {
-            inner.push_log("Internet connectivity lost while running.");
-        }
+        inner.push_log("Network adapter disconnected while running.");
         inner.worker_handle = None;
 
         if inner.transition(ServiceMachineState::Stopped).is_err() {
@@ -508,11 +507,7 @@ fn stop_for_connectivity(app: &AppHandle, shared: &SharedState, network_lost: bo
         }
     }
 
-    if network_lost {
-        notify(app, "Network disconnected. Service stopped.");
-    } else {
-        notify(app, "Internet lost. Service stopped.");
-    }
+    notify(app, "Network disconnected. Service stopped.");
 }
 
 async fn worker_loop(app: AppHandle, shared: SharedState) {
@@ -536,11 +531,11 @@ async fn worker_loop(app: AppHandle, shared: SharedState) {
                 inner.wifi_status = WifiStatus::Connected;
             }
             Ok(false) => {
-                stop_for_connectivity(&app, &shared, true);
+                stop_for_network_disconnect(&app, &shared);
                 break;
             }
             Err(_) => {
-                stop_for_connectivity(&app, &shared, true);
+                stop_for_network_disconnect(&app, &shared);
                 break;
             }
         }
@@ -548,16 +543,27 @@ async fn worker_loop(app: AppHandle, shared: SharedState) {
         let internet_ok = internet_online(&client).await;
         {
             let mut inner = shared.lock();
+            let previous_status = inner.internet_status;
             inner.internet_status = if internet_ok {
                 InternetStatus::Online
             } else {
                 InternetStatus::Offline
             };
+
+            match (previous_status, inner.internet_status) {
+                (_, InternetStatus::Offline) if previous_status != InternetStatus::Offline => {
+                    inner.push_log("Internet connectivity lost. Waiting for reconnection.");
+                }
+                (InternetStatus::Offline, InternetStatus::Online) => {
+                    inner.push_log("Internet connectivity restored.");
+                }
+                _ => {}
+            }
         }
 
         if !internet_ok {
-            stop_for_connectivity(&app, &shared, false);
-            break;
+            tokio::time::sleep(Duration::from_secs(interval_seconds)).await;
+            continue;
         }
 
         let latency = match kick(&client).await {
@@ -578,7 +584,10 @@ async fn worker_loop(app: AppHandle, shared: SharedState) {
     }
 }
 
-async fn start_service_internal(app: AppHandle, shared: SharedState) -> Result<ServiceSnapshot, String> {
+async fn start_service_internal(
+    app: AppHandle,
+    shared: SharedState,
+) -> Result<ServiceSnapshot, String> {
     {
         let mut inner = shared.lock();
         if inner.current_state != ServiceMachineState::Stopped {
@@ -624,7 +633,9 @@ async fn start_service_internal(app: AppHandle, shared: SharedState) -> Result<S
         let mut inner = shared.lock();
         inner.wifi_status = WifiStatus::Connected;
         inner.error_message = None;
-        inner.transition(ServiceMachineState::Running).map_err(|err| err.to_string())?;
+        inner
+            .transition(ServiceMachineState::Running)
+            .map_err(|err| err.to_string())?;
     }
 
     let app_for_worker = app.clone();
@@ -646,7 +657,10 @@ async fn start_service_internal(app: AppHandle, shared: SharedState) -> Result<S
     Ok(shared.snapshot())
 }
 
-async fn stop_service_internal(_app: AppHandle, shared: SharedState) -> Result<ServiceSnapshot, String> {
+async fn stop_service_internal(
+    _app: AppHandle,
+    shared: SharedState,
+) -> Result<ServiceSnapshot, String> {
     let handle = {
         let mut inner = shared.lock();
         if inner.current_state != ServiceMachineState::Running {
@@ -699,7 +713,10 @@ async fn stop_service(
 }
 
 #[tauri::command]
-async fn kick_now(app: AppHandle, state: State<'_, SharedState>) -> Result<ServiceSnapshot, String> {
+async fn kick_now(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+) -> Result<ServiceSnapshot, String> {
     let client = {
         let inner = state.inner().lock();
         if inner.current_state != ServiceMachineState::Running {
@@ -726,7 +743,11 @@ async fn kick_now(app: AppHandle, state: State<'_, SharedState>) -> Result<Servi
 }
 
 #[tauri::command]
-fn set_interval(app: AppHandle, interval_seconds: u64, state: State<'_, SharedState>) -> ServiceSnapshot {
+fn set_interval(
+    app: AppHandle,
+    interval_seconds: u64,
+    state: State<'_, SharedState>,
+) -> ServiceSnapshot {
     let mut inner = state.inner().lock();
     let sanitized = sanitize_interval_seconds(interval_seconds);
     inner.interval_seconds = sanitized;
@@ -766,11 +787,14 @@ pub fn run() {
             let shared = app.state::<SharedState>().inner().clone();
             match load_settings(app.handle()) {
                 Ok(Some(settings)) => {
-                    shared.lock().interval_seconds = sanitize_interval_seconds(settings.interval_seconds);
+                    shared.lock().interval_seconds =
+                        sanitize_interval_seconds(settings.interval_seconds);
                 }
                 Ok(None) => {}
                 Err(err) => {
-                    shared.lock().push_log(format!("Failed to load settings: {err}"));
+                    shared
+                        .lock()
+                        .push_log(format!("Failed to load settings: {err}"));
                 }
             }
             let shared = app.state::<SharedState>().inner().clone();
