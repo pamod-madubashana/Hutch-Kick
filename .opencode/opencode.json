@@ -1,0 +1,7 @@
+{
+  "plugin": [
+    ".opencode/plugins/graphify.js",
+    ".opencode/plugins/graphify-cmd.js",
+    ".opencode/plugins/pr-cmd.js"
+  ]
+}
