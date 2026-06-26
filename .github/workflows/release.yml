@@ -104,7 +104,7 @@ jobs:
           if (-not $setup) { $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter *.exe -Recurse | Select-Object -First 1 }
           if ($setup) { Copy-Item $setup.FullName "release/Hutch-Kick-tray_x64-setup.exe" -Force }
           
-          $portable = "src-tauri/target/release/Hutch-Kick-tray.exe"
+          $portable = "src-tauri/target/release/Hutch-Kick.exe"
           if (Test-Path $portable) { Copy-Item $portable "release/Hutch-Kick.exe" -Force }
 
       - name: Create artifacts (Linux)
@@ -229,5 +229,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           git add VERSION package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
-          git commit -m "chore(release): v${{ needs.validate.outputs.version }}"
+          git diff --cached --quiet || git commit -m "chore(release): v${{ needs.validate.outputs.version }}"
           git push origin main
