@@ -66,6 +66,15 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Configure cargo for HTTP/1.1
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << 'EOF'
+          [http]
+          version = "HTTP/1.1"
+          EOF
+
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli
 
