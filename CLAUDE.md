@@ -172,7 +172,11 @@ Output is stored in `kick-graphify/` and includes:
 - `knowledge-graph.json` - Machine-readable graph data
 - `audit-report.md` - Change summary and analysis
 
-**Note**: A junction point `graphify-out -> kick-graphify` is set up so graphify commands automatically write to `kick-graphify/`. Just run `/graphify` as usual - output goes to `kick-graphify/`.
+**Note**: Graphify CLI commands default to `graphify-out/`. For this project, always pass `--graph kick-graphify/graph.json`:
+```bash
+graphify path "A" "B" --graph kick-graphify/graph.json
+graphify explain "X" --graph kick-graphify/graph.json
+```
 
 ---
 
