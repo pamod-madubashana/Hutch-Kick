@@ -368,7 +368,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 }
 
 #[cfg(target_os = "windows")]
-fn network_connected_windows() -> Result<bool> {
+fn network_connected() -> Result<bool> {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -405,12 +405,214 @@ fn network_connected_windows() -> Result<bool> {
     Ok(false)
 }
 
-#[cfg(not(target_os = "windows"))]
-fn network_connected_windows() -> Result<bool> {
-    Err(anyhow!("Network check is only supported on Windows"))
+#[cfg(target_os = "linux")]
+fn network_connected() -> Result<bool> {
+    let output = Command::new("nmcli")
+        .args(["-t", "-f", "TYPE,STATE", "device"])
+        .output()
+        .context("failed to run nmcli")?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split(':').collect();
+            if parts.len() >= 2 {
+                let dev_type = parts[0];
+                let state = parts[1];
+                if state == "connected" && (dev_type == "wifi" || dev_type == "ethernet") {
+                    return Ok(true);
+                }
+            }
+        }
+        return Ok(false);
+    }
+
+    let output = Command::new("ip")
+        .args(["link", "show"])
+        .output()
+        .context("failed to run ip link")?;
+
+    if !output.status.success() {
+        return Err(anyhow!("ip link returned non-zero exit status"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if line.contains("state UP") && !line.contains("lo:") {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+#[cfg(target_os = "macos")]
+fn network_connected() -> Result<bool> {
+    let output = Command::new("networksetup")
+        .args(["-listallhardwareports"])
+        .output()
+        .context("failed to run networksetup")?;
+
+    if !output.status.success() {
+        return Err(anyhow!("networksetup returned non-zero exit status"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut current_device = None;
+
+    for line in stdout.lines() {
+        if line.starts_with("Hardware Port:") {
+            let port = line.splitn(2, ':').nth(1).unwrap_or("").trim();
+            if port.to_lowercase().contains("loopback") {
+                current_device = None;
+                continue;
+            }
+        } else if line.starts_with("Device:") {
+            current_device = Some(line.splitn(2, ':').nth(1).unwrap_or("").trim().to_string());
+        }
+
+        if let Some(ref device) = current_device {
+            if !line.starts_with("Hardware") && !line.starts_with("Device") {
+                let ifconfig = Command::new("ifconfig")
+                    .arg(device)
+                    .output()
+                    .context("failed to run ifconfig")?;
+
+                if ifconfig.status.success() {
+                    let ifout = String::from_utf8_lossy(&ifconfig.stdout);
+                    if ifout.contains("status: active") && ifout.contains("inet ") {
+                        return Ok(true);
+                    }
+                }
+                current_device = None;
+            }
+        }
+    }
+
+    Ok(false)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+fn network_connected() -> Result<bool> {
+    Err(anyhow!("Network check is not supported on this platform"))
+}
+
+#[cfg(target_os = "windows")]
+fn check_adapter_internet() -> Result<bool> {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let output = Command::new("netsh")
+        .args(["interface", "ip", "show", "addresses"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .context("failed to run netsh ip")?;
+
+    if !output.status.success() {
+        return Err(anyhow!("netsh ip returned non-zero exit status"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut has_ip = false;
+    let mut has_gateway = false;
+
+    for raw_line in stdout.lines() {
+        let line = raw_line.trim();
+        if line.starts_with("IP Address:") || line.starts_with("IP Address(b):") {
+            let addr = line.splitn(2, ':').nth(1).unwrap_or("").trim();
+            if !addr.is_empty() && addr != "0.0.0.0" {
+                has_ip = true;
+            }
+        }
+        if line.starts_with("Default Gateway:") || line.starts_with("Default Gateway(b):") {
+            let gw = line.splitn(2, ':').nth(1).unwrap_or("").trim();
+            if !gw.is_empty() && gw != "0.0.0.0" {
+                has_gateway = true;
+            }
+        }
+    }
+
+    Ok(has_ip && has_gateway)
+}
+
+#[cfg(target_os = "linux")]
+fn check_adapter_internet() -> Result<bool> {
+    let output = Command::new("ip")
+        .args(["route", "show", "default"])
+        .output()
+        .context("failed to run ip route")?;
+
+    if !output.status.success() {
+        return Err(anyhow!("ip route returned non-zero exit status"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let has_default_route = stdout.lines().any(|line| line.contains("default"));
+
+    let output = Command::new("ip")
+        .args(["addr", "show"])
+        .output()
+        .context("failed to run ip addr")?;
+
+    if !output.status.success() {
+        return Err(anyhow!("ip addr returned non-zero exit status"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut has_ip = false;
+
+    for line in stdout.lines() {
+        if line.trim().starts_with("inet ") && !line.contains("127.0.0.1") {
+            has_ip = true;
+            break;
+        }
+    }
+
+    Ok(has_ip && has_default_route)
+}
+
+#[cfg(target_os = "macos")]
+fn check_adapter_internet() -> Result<bool> {
+    let output = Command::new("netstat")
+        .args(["-nr", "inet"])
+        .output()
+        .context("failed to run netstat")?;
+
+    if !output.status.success() {
+        return Err(anyhow!("netstat returned non-zero exit status"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let has_default_route = stdout.lines().any(|line| line.contains("default"));
+
+    let output = Command::new("ifconfig")
+        .args(["inet"])
+        .output()
+        .context("failed to run ifconfig inet")?;
+
+    if !output.status.success() {
+        return Err(anyhow!("ifconfig inet returned non-zero exit status"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let has_ip = stdout.lines().any(|line| line.trim().starts_with("inet ") && !line.contains("127.0.0.1"));
+
+    Ok(has_ip && has_default_route)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+fn check_adapter_internet() -> Result<bool> {
+    Err(anyhow!("Internet check is not supported on this platform"))
 }
 
 async fn internet_online(client: &Client) -> bool {
+    if let Ok(connected) = check_adapter_internet() {
+        if connected {
+            return true;
+        }
+    }
+
     let result = client
         .head(CONNECTIVITY_URL)
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECONDS))
@@ -424,7 +626,7 @@ async fn internet_online(client: &Client) -> bool {
 }
 
 async fn refresh_connectivity_state(shared: &SharedState) {
-    let wifi_status = match network_connected_windows() {
+    let wifi_status = match network_connected() {
         Ok(true) => WifiStatus::Connected,
         Ok(false) => WifiStatus::Disconnected,
         Err(_) => WifiStatus::Unknown,
@@ -511,6 +713,9 @@ fn stop_for_network_disconnect(app: &AppHandle, shared: &SharedState) {
 }
 
 async fn worker_loop(app: AppHandle, shared: SharedState) {
+    let mut consecutive_kick_failures = 0u32;
+    const MAX_KICK_RETRIES: u32 = 3;
+
     loop {
         let (client, interval_seconds, current_state) = {
             let inner = shared.lock();
@@ -525,7 +730,7 @@ async fn worker_loop(app: AppHandle, shared: SharedState) {
             break;
         }
 
-        match network_connected_windows() {
+        match network_connected() {
             Ok(true) => {
                 let mut inner = shared.lock();
                 inner.wifi_status = WifiStatus::Connected;
@@ -567,9 +772,32 @@ async fn worker_loop(app: AppHandle, shared: SharedState) {
         }
 
         let latency = match kick(&client).await {
+            Ok(latency) => {
+                consecutive_kick_failures = 0;
+                Ok(latency)
+            }
+            Err(err) => {
+                consecutive_kick_failures += 1;
+                if consecutive_kick_failures >= MAX_KICK_RETRIES {
+                    Err(err)
+                } else {
+                    {
+                        let mut inner = shared.lock();
+                        inner.push_log(format!(
+                            "Kick failed (attempt {}/{}), retrying...",
+                            consecutive_kick_failures, MAX_KICK_RETRIES
+                        ));
+                    }
+                    tokio::time::sleep(Duration::from_secs(interval_seconds)).await;
+                    continue;
+                }
+            }
+        };
+
+        let latency = match latency {
             Ok(latency) => latency,
             Err(_) => {
-                set_error_and_stop(&app, &shared, "Kick request failed.");
+                set_error_and_stop(&app, &shared, "Kick request failed after retries.");
                 break;
             }
         };
@@ -600,7 +828,7 @@ async fn start_service_internal(
         inner.error_message = None;
     }
 
-    let network_connected = match network_connected_windows() {
+    let network_connected = match network_connected() {
         Ok(connected) => connected,
         Err(err) => {
             {
