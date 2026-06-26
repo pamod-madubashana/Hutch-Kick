@@ -1,0 +1,202 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate version format
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          if [[ ! "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must be in semver format (e.g., 1.0.0)"
+            exit 1
+          fi
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Update version files
+        run: |
+          VERSION="${{ inputs.version }}"
+          
+          # Update VERSION file
+          echo "$VERSION" > VERSION
+          
+          # Update package.json
+          python3 -c "
+          import json
+          with open('package.json', 'r') as f:
+              data = json.load(f)
+          data['version'] = '$VERSION'
+          with open('package.json', 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          "
+          
+          # Update tauri.conf.json
+          python3 -c "
+          import json
+          with open('src-tauri/tauri.conf.json', 'r') as f:
+              data = json.load(f)
+          data['version'] = '$VERSION'
+          with open('src-tauri/tauri.conf.json', 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          "
+          
+          # Update Cargo.toml
+          python3 -c "
+          import re
+          with open('src-tauri/Cargo.toml', 'r') as f:
+              content = f.read()
+          content = re.sub(r'^version\s*=\s*\"[^\"]*\"', 'version = \"$VERSION\"', content, flags=re.MULTILINE)
+          with open('src-tauri/Cargo.toml', 'w') as f:
+              f.write(content)
+          "
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli
+
+      - name: Disable macOS signing
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "TAURI_SIGNING_PRIVATE_KEY=" >> $GITHUB_ENV
+          echo "TAURI_SIGNING_PASSWORD=" >> $GITHUB_ENV
+
+      - name: Build Tauri app
+        run: npm run tauri build
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+      - name: Create artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          
+          $msi = Get-ChildItem "src-tauri/target/release/bundle/msi" -Filter *.msi -Recurse | Select-Object -First 1
+          if ($msi) { Copy-Item $msi.FullName "release/Hutch-Kick_x64_en-US.msi" -Force }
+          
+          $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter *.exe -Recurse |
+            Where-Object { $_.Name -match "setup|Setup|nsis" } | Select-Object -First 1
+          if (-not $setup) { $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter *.exe -Recurse | Select-Object -First 1 }
+          if ($setup) { Copy-Item $setup.FullName "release/Hutch-Kick_x64-setup.exe" -Force }
+
+      - name: Create artifacts (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          mkdir -p release
+          
+          appimage="$(ls -1 src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -n1 || true)"
+          if [ -n "${appimage:-}" ]; then cp "$appimage" "release/Hutch-Kick_amd64.AppImage"; fi
+          
+          deb="$(ls -1 src-tauri/target/release/bundle/deb/*.deb 2>/dev/null | head -n1 || true)"
+          if [ -n "${deb:-}" ]; then cp "$deb" "release/Hutch-Kick_amd64.deb"; fi
+
+      - name: Create artifacts (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          mkdir -p release
+          
+          dmg="$(ls -1 src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -n1 || true)"
+          if [ -n "${dmg:-}" ]; then cp "$dmg" "release/Hutch-Kick_aarch64.dmg"; fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: release/*
+          if-no-files-found: warn
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add VERSION package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+          git commit -m "chore(release): v${{ inputs.version }}" || echo "No changes to commit"
+          git push hutch-kick main
+
+      - name: Create release tag
+        run: |
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git push hutch-kick "v${{ inputs.version }}"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Release v${{ inputs.version }}
+          body: |
+            ## What's Changed
+            <!-- Add release notes here -->
+            
+            ## Installation
+            Download the appropriate file for your platform:
+            - **Windows**: `.msi` or `.exe` installer
+            - **Linux**: `.AppImage` or `.deb` package
+            - **macOS**: `.dmg` disk image
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

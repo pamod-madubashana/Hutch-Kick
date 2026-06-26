@@ -27,8 +27,5 @@ dist-ssr
 kick-graphify/
 graphify-out/
 
-# OpenCode config
-.opencode/
-
 # RTK config
 .rtk/
