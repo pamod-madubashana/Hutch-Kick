@@ -97,12 +97,15 @@ jobs:
           New-Item -ItemType Directory -Force -Path release | Out-Null
           
           $msi = Get-ChildItem "src-tauri/target/release/bundle/msi" -Filter *.msi -Recurse | Select-Object -First 1
-          if ($msi) { Copy-Item $msi.FullName "release/Hutch-Kick_x64_en-US.msi" -Force }
+          if ($msi) { Copy-Item $msi.FullName "release/Hutch-Kick-tray_x64_en-US.msi" -Force }
           
           $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter *.exe -Recurse |
             Where-Object { $_.Name -match "setup|Setup|nsis" } | Select-Object -First 1
           if (-not $setup) { $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter *.exe -Recurse | Select-Object -First 1 }
-          if ($setup) { Copy-Item $setup.FullName "release/Hutch-Kick_x64-setup.exe" -Force }
+          if ($setup) { Copy-Item $setup.FullName "release/Hutch-Kick-tray_x64-setup.exe" -Force }
+          
+          $portable = "src-tauri/target/release/Hutch-Kick-tray.exe"
+          if (Test-Path $portable) { Copy-Item $portable "release/Hutch-Kick.exe" -Force }
 
       - name: Create artifacts (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -111,10 +114,13 @@ jobs:
           mkdir -p release
           
           appimage="$(ls -1 src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -n1 || true)"
-          if [ -n "${appimage:-}" ]; then cp "$appimage" "release/Hutch-Kick_amd64.AppImage"; fi
+          if [ -n "${appimage:-}" ]; then cp "$appimage" "release/Hutch-Kick-tray_amd64.AppImage"; fi
           
           deb="$(ls -1 src-tauri/target/release/bundle/deb/*.deb 2>/dev/null | head -n1 || true)"
-          if [ -n "${deb:-}" ]; then cp "$deb" "release/Hutch-Kick_amd64.deb"; fi
+          if [ -n "${deb:-}" ]; then cp "$deb" "release/Hutch-Kick-tray_amd64.deb"; fi
+          
+          rpm="$(ls -1 src-tauri/target/release/bundle/rpm/*.rpm 2>/dev/null | head -n1 || true)"
+          if [ -n "${rpm:-}" ]; then cp "$rpm" "release/Hutch-Kick-tray-x86_64.rpm"; fi
 
       - name: Create artifacts (macOS)
         if: matrix.os == 'macos-latest'
@@ -123,7 +129,7 @@ jobs:
           mkdir -p release
           
           dmg="$(ls -1 src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -n1 || true)"
-          if [ -n "${dmg:-}" ]; then cp "$dmg" "release/Hutch-Kick_aarch64.dmg"; fi
+          if [ -n "${dmg:-}" ]; then cp "$dmg" "release/Hutch-Kick-tray_aarch64.dmg"; fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
