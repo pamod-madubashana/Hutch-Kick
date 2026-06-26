@@ -25,13 +25,18 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Validate version format
+      - name: Validate and normalize version
         if: matrix.os == 'ubuntu-latest'
         run: |
-          if [[ ! "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Error: Version must be in semver format (e.g., 1.0.0)"
+          VERSION="${{ inputs.version }}"
+          # Strip 'v' prefix if present
+          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must be in semver format (e.g., 1.0.0 or v1.0.0)"
             exit 1
           fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Normalized version: $VERSION"
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -41,7 +46,7 @@ jobs:
 
       - name: Update version files
         run: |
-          VERSION="${{ inputs.version }}"
+          VERSION="${{ env.VERSION }}"
           
           # Update VERSION file
           echo "$VERSION" > VERSION
@@ -161,19 +166,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Normalize version
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
       - name: Commit version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           git add VERSION package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
-          git commit -m "chore(release): v${{ inputs.version }}" || echo "No changes to commit"
+          git commit -m "chore(release): v${{ env.VERSION }}" || echo "No changes to commit"
           git push hutch-kick main
 
       - name: Create release tag
         run: |
-          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
-          git push hutch-kick "v${{ inputs.version }}"
+          git tag -a "v${{ env.VERSION }}" -m "Release v${{ env.VERSION }}"
+          git push hutch-kick "v${{ env.VERSION }}"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -183,8 +194,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ inputs.version }}
-          name: Release v${{ inputs.version }}
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
           body: |
             ## What's Changed
             <!-- Add release notes here -->
