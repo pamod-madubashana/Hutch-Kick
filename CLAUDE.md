@@ -217,3 +217,16 @@ When to split PRs:
 - Different feature areas (UI vs backend vs docs)
 - Mix of bug fixes and new features
 - Configuration changes mixed with code changes
+
+---
+
+# Custom Skills
+
+## /pr - Automated PR Workflow
+```bash
+/pr                           # Auto-generate branch name and PR title
+/pr <branch-name>             # Use custom branch name
+/pr <branch-name> <title>     # Use custom branch name and PR title
+```
+
+Performs: commit → branch → push → create PR → merge to main → delete branch → sync local
